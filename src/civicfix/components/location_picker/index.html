@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px system-ui, sans-serif; color: #1b3028; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    button, input { min-height: 38px; border: 1px solid #cbd8d0; border-radius: 9px; padding: 8px 11px; font: inherit; }
+    button { background: #fff; color: #176b4b; font-weight: 650; cursor: pointer; }
+    button:focus-visible, input:focus-visible { outline: 3px solid #65bd91; outline-offset: 2px; }
+    input { min-width: 180px; flex: 1; }
+    #message { min-height: 18px; margin-top: 4px; color: #66767d; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <button id="current" type="button">Use current location</button>
+    <input id="query" type="search" placeholder="Search a landmark or street" aria-label="Search a location">
+    <button id="search" type="button">Search location</button>
+  </div>
+  <div id="message" role="status" aria-live="polite"></div>
+  <script>
+    let args = {};
+    let sequence = 0;
+    let mapsPromise = null;
+    const message = document.getElementById("message");
+    function post(type, payload = {}) {
+      window.parent.postMessage({isStreamlitMessage: true, type, ...payload}, "*");
+    }
+    function emit(result) {
+      sequence += 1;
+      post("streamlit:setComponentValue", {value: {...result, token: `${Date.now()}-${sequence}`}, dataType: "json"});
+    }
+    function say(text) { message.textContent = text; }
+    function loadMaps() {
+      if (!args.maps_key) return Promise.reject(new Error("Add GOOGLE_MAPS_BROWSER_KEY to enable location search."));
+      if (window.google && google.maps) return Promise.resolve();
+      if (!mapsPromise) {
+        mapsPromise = new Promise((resolve, reject) => {
+          window.initCivicFixGeocoder = resolve;
+          const script = document.createElement("script");
+          script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(args.maps_key)}&callback=initCivicFixGeocoder`;
+          script.async = true;
+          script.onerror = () => reject(new Error("Google Maps could not load. Check the browser key and API restrictions."));
+          document.head.appendChild(script);
+        });
+      }
+      return mapsPromise;
+    }
+    function reverseGeocode(lat, lng) {
+      if (!args.maps_key) return Promise.resolve(`Current location · ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      return loadMaps().then(() => new Promise(resolve => {
+        new google.maps.Geocoder().geocode({location: {lat, lng}}, (results, status) => {
+          resolve(status === "OK" && results?.[0] ? results[0].formatted_address : `Current location · ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        });
+      })).catch(() => `Current location · ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+    }
+    document.getElementById("current").addEventListener("click", () => {
+      if (!navigator.geolocation) { say("This browser does not provide location access."); return; }
+      say("Requesting location permission…");
+      navigator.geolocation.getCurrentPosition(async position => {
+        const lat = position.coords.latitude, lng = position.coords.longitude;
+        const location = await reverseGeocode(lat, lng);
+        emit({kind: "current", lat, lng, location});
+        say("Location selected. Review the landmark before saving.");
+      }, error => {
+        say(error.code === 1 ? "Location permission was declined." : "Could not determine your location. Select a point on the map instead.");
+      }, {enableHighAccuracy: true, timeout: 12000, maximumAge: 30000});
+    });
+    document.getElementById("search").addEventListener("click", async () => {
+      const address = document.getElementById("query").value.trim();
+      if (!address) { say("Enter a landmark or street to search."); return; }
+      try {
+        await loadMaps();
+        say("Searching…");
+        new google.maps.Geocoder().geocode({address}, (results, status) => {
+          if (status !== "OK" || !results?.length) { say("No matching location found. Try a nearby landmark."); return; }
+          const result = results[0], point = result.geometry.location;
+          emit({kind: "search", lat: point.lat(), lng: point.lng(), location: result.formatted_address});
+          say("Location selected. Review it on the map before saving.");
+        });
+      } catch (error) { say(error.message || "Location search is unavailable."); }
+    });
+    window.addEventListener("message", event => {
+      if (event.data?.type === "streamlit:render") { args = event.data.args || {}; }
+    });
+    post("streamlit:componentReady", {apiVersion: 1});
+    post("streamlit:setFrameHeight", {height: 68});
+  </script>
+</body>
+</html>

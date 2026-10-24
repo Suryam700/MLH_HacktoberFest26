@@ -18,8 +18,9 @@ Category = Literal[
 ]
 Priority = Literal["Low", "Normal", "Urgent"]
 ValidationStatus = Literal["valid", "irrelevant", "ambiguous"]
-IssueStatus = Literal["Open", "Partially resolved", "Resolved", "Uncertain"]
+IssueStatus = Literal["Open", "In progress", "Partially resolved", "Resolved", "Uncertain"]
 ResolutionStatus = Literal["resolved", "partially_resolved", "still_open", "uncertain"]
+AuthorityStatus = Literal["In progress", "Resolved", "Partially resolved", "Still open", "Uncertain"]
 
 
 class ComplaintDraft(BaseModel):
@@ -71,10 +72,13 @@ class SavedReport(BaseModel):
     photo_jpeg: bytes | None = None
     draft: ComplaintDraft
     issue_id: str | None = None
+    owner_session_key: str = ""
 
 
 class CivicIssue(BaseModel):
     id: str
+    public_id: str = ""
+    authority_status: AuthorityStatus | None = None
     category: Category
     summary: str
     location_text: str = ""
@@ -97,14 +101,34 @@ class CivicIssue(BaseModel):
     resolution_status: ResolutionStatus | None = None
     resolution_confidence: float | None = None
     resolution_note: str = ""
+    resolution_updated_at: str | None = None
+    status_source: str = "evidence"
+    status_updated_at: str | None = None
 
 
 class ResolutionAssessment(BaseModel):
     status: ResolutionStatus = Field(description="Visual comparison result; use uncertain if images cannot be reliably matched")
     confidence: float = Field(ge=0, le=1, description="Confidence from 0 to 1")
+    same_location_likelihood: float = Field(default=0.5, ge=0, le=1, description="Likelihood both photos show the same place")
+    issue_persistence: float = Field(default=0.5, ge=0, le=1, description="Likelihood the original issue remains visible")
+    evidence_quality: float = Field(default=0.5, ge=0, le=1, description="Quality and sufficiency of the after evidence")
     visible_changes: list[str] = Field(description="Changes visible between before and after evidence")
     reasoning_summary: str = Field(description="Concise comparison grounded only in the two images")
     limitations: list[str] = Field(description="Why the evidence may not prove the civic issue was resolved")
+
+
+class GovernmentResolution(BaseModel):
+    id: str
+    issue_id: str
+    department: str
+    authority: str
+    status: AuthorityStatus
+    resolution_notes: str
+    resolution_date: str
+    work_order_id: str = ""
+    created_at: str
+    verification: ResolutionAssessment | None = None
+    evidence_photos: list[bytes] = Field(default_factory=list)
 
 
 class RouteRecommendation(BaseModel):

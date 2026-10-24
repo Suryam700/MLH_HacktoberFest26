@@ -1,6 +1,6 @@
 # CivicFix AI — From citizen evidence to trackable civic issues
 
-CivicFix AI is a prototype civic issue intelligence app. It accepts a citizen photo and description, validates whether evidence appears to show a public civic issue, extracts a structured report, calculates a transparent priority score, suggests possible duplicates, and tracks later evidence. It can compare a first photo with a later one, but its assessment is not proof of an official resolution.
+CivicFix AI is a prototype civic issue intelligence app. It accepts citizen evidence, assigns stable CivicFix issue IDs, scores and clusters reports, records prototype authority responses, and separately assesses whether before/after photos appear to show improvement. Authority submissions are not connected to or verified by a real government department.
 
 ## MVP capabilities
 
@@ -9,15 +9,20 @@ CivicFix AI is a prototype civic issue intelligence app. It accepts a citizen ph
 - **Priority score:** defaults to `35% severity + 25% public impact + 20% safety risk + 10% confidence + 10% freshness`. Weights and the freshness-decay interval are configurable in `config/scoring.json`; these are not official policy or emergency advice.
 - **Duplicate suggestions:** category and lexical text similarity, plus distance when coordinates are available. Geolocated candidates must be within 120 metres and pass a similarity threshold; without coordinates, the text threshold is higher. A resident chooses whether to group a new report. This MVP uses deterministic token similarity, not semantic embeddings/vector search.
 - **Issue clusters:** one issue can contain multiple citizen reports, a first/latest photo, and community confirmations.
-- **Before/after comparison:** returns `resolved`, `partially_resolved`, `still_open`, or `uncertain`, with confidence and limitations. It does not prove a repair or change an official complaint.
-- **Prioritized dashboard and map:** map pins use only coordinates supplied by residents.
+- **Stable CivicFix IDs:** issues receive canonical `CF-####` IDs; IDs from merged clusters remain searchable aliases.
+- **Authority Portal:** gated prototype portal searches by CivicFix ID, marks work in progress and records department, authority, status, notes, date, reference and multiple after photos.
+- **Government Resolutions:** citizens can search authority submissions and view government status separately from AI evidence assessment. Weak evidence remains pending or uncertain.
+- **Before/after comparison:** multimodal AI can compare the original image with multiple authority photos and return status, confidence, same-location likelihood, issue persistence, evidence quality and limitations. It is not official verification.
+- **Prioritized dashboard and maps:** map pins use only resident-confirmed coordinates. Google Maps and Street View are available with a restricted browser key; OpenStreetMap is the fallback.
 - **Official handoff:** opens the configured portal. Residents submit there themselves and manually record any reference or status.
 
 ## Architecture
 
 ```text
-Streamlit UI (app.py)
-  ├─ evidence intake, review/edit, dashboard, map
+Streamlit utility shell (app.py + civicfix/ui.py)
+  ├─ Home, Scan, My Reports, All Reports, Civic Map, Issues
+  ├─ Government Resolutions, Authority Portal, Insights, Profile
+  ├─ camera/gallery intake, map pin selection, report review
   ├─ civic validation + structured multimodal analysis (ai.py)
   │    ├─ Gemini API (default; GOOGLE_API_KEY from .env)
   │    ├─ Ollama local model (optional)
@@ -27,10 +32,10 @@ Streamlit UI (app.py)
   ├─ duplicate matching (deduplication.py)
   ├─ issue workflow (issue_service.py)
   ├─ editable authority routes (config/routes.json)
-  └─ SQLite issues, reports, confirmations, model runs (storage.py)
+  └─ SQLite issues, reports, confirmations, authority resolutions/evidence, model runs (storage.py)
 ```
 
-The supplied prompt recommends React/TypeScript and FastAPI for a larger deployment. This one-day MVP keeps Streamlit so the complete workflow can run in one Python app, with the AI, scoring, matching, schemas and persistence kept modular for later extraction into APIs and a separate frontend.
+The UI is styled as a civic utility and operations tool rather than a chat screen. The current MVP keeps Streamlit so the complete workflow runs in one Python app; the AI, scoring, matching, schemas and persistence stay modular for later extraction into React/FastAPI if deployment needs justify it.
 
 ## Run on Windows
 
@@ -42,7 +47,7 @@ The supplied prompt recommends React/TypeScript and FastAPI for a larger deploym
    python -m pip install -r requirements.txt
    ```
 
-2. Keep your existing `.env` in the project root. It must contain `GOOGLE_API_KEY`; the app loads it automatically. Gemini is the default provider and `gemini-3.8-flash` is the default model. Optional settings are `AI_PROVIDER`, `GEMINI_MODEL`, `CIVICFIX_DB`, `OLLAMA_BASE_URL` and `OLLAMA_MODEL`.
+2. Keep your existing `.env` in the project root. It must contain `GOOGLE_API_KEY` for Gemini. `CIVICFIX_REVIEW_KEY` unlocks reviewer tools; `CIVICFIX_AUTHORITY_KEY` gates prototype authority submissions. Optional settings include `AI_PROVIDER`, `GEMINI_MODEL`, `CIVICFIX_DB`, `OLLAMA_BASE_URL`, `OLLAMA_MODEL`, `GOOGLE_MAPS_BROWSER_KEY` and `CIVICFIX_REPO_URL`.
 
 3. Start the app:
 
@@ -53,6 +58,12 @@ The supplied prompt recommends React/TypeScript and FastAPI for a larger deploym
 For local Ollama instead, set `AI_PROVIDER=ollama` in `.env`, install/start Ollama, then pull a vision-capable model such as `gemma3:4b`. Hardware needs depend on the model and machine.
 
 SQLite and photo evidence are saved under `data/civicfix.sqlite3` by default. `.env` and `data/` are Git-ignored. Never commit API keys or private citizen evidence.
+
+Set a strong `CIVICFIX_REVIEW_KEY` in the server `.env` to unlock the **All reports** page, reviewer-only evidence, issue merging and status controls. The page lists every saved user report, supports search and category/status filters, and can export the filtered list as CSV. Without the key, private report details remain hidden. This is a lightweight prototype gate, not production account authentication. My Reports uses a browser-session identifier rather than an account.
+
+`CIVICFIX_AUTHORITY_KEY` is a separate prototype credential for **Authority Portal**. This portal is not a real government integration. AI evidence comparison is sent to the selected provider only after explicit consent. Government status and AI evidence assessment remain separate.
+
+Google Maps is optional. Put a **browser-restricted** Maps JavaScript API key in `GOOGLE_MAPS_BROWSER_KEY`; enable billing, the Maps JavaScript API, and the Geocoding API for location search. Restrict the key to your app's HTTP referrers (for local development, `http://localhost:8501/*`) and the APIs you use. The Maps key is visible to the browser by design and must not be your server-side Gemini `GOOGLE_API_KEY`. When absent, CivicFix falls back to OpenStreetMap and explains that Street View is unavailable.
 
 ## Demo flow
 
@@ -77,9 +88,16 @@ Use a clear pothole or open-drain photo with a landmark, then show validation, e
 
 Prepare a labeled sample containing clear civic issues, irrelevant images, ambiguous/dark photos, near-duplicate reports and before/after pairs. Record expected labels, actual results, confidence, false duplicate suggestions, resolution assessments and latency. The app records model name, prompt version, timestamp and validation result; report measured accuracy only after running that benchmark.
 
+Run the local backend workflow checks with:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
 ## Main files
 
 - `app.py` — report flow, issue dashboard, confirmations and resolution review.
+- `src/civicfix/ui.py` — responsive civic utility screens and navigation.
 - `src/civicfix/ai.py` — Gemini/Ollama analysis and before/after comparison.
 - `src/civicfix/models.py` — validated analysis, issue and resolution contracts.
 - `src/civicfix/priority.py` — deterministic score and freshness decay.
@@ -87,6 +105,7 @@ Prepare a labeled sample containing clear civic issues, irrelevant images, ambig
 - `src/civicfix/deduplication.py` — category, distance and lexical candidate matching.
 - `src/civicfix/issue_service.py` — score and duplicate workflow helpers.
 - `src/civicfix/storage.py` — SQLite schema, migration and persistence.
+- `tests/test_workflow.py` — deterministic scoring, dedupe and storage workflow checks.
 - `src/civicfix/routing.py`, `config/routes.json` — authority routing configuration.
 
 ## Contributions
