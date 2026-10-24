@@ -208,6 +208,9 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# CivicFix local database and uploaded evidence
+data/
+
 # PyPI configuration file
 .pypirc
 

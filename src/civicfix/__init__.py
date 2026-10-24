@@ -1,0 +1,1 @@
+"""CivicFix AI application package."""

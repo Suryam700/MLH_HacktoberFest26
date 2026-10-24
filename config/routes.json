@@ -1,0 +1,12 @@
+{
+  "jurisdiction": "Kanpur Nagar, Uttar Pradesh, India",
+  "default_routes": [
+    {
+      "authority": "Uttar Pradesh JanSunwai - Samadhan",
+      "channel": "Official grievance registration portal",
+      "url": "https://jansunwai.up.nic.in/onlineComplaint",
+      "note": "This portal requires citizen registration and OTP/CAPTCHA steps. CivicFix prepares a draft only; it does not submit the complaint."
+    }
+  ],
+  "category_routes": {}
+}

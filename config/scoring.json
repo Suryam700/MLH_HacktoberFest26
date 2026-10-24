@@ -1,0 +1,10 @@
+{
+  "weights": {
+    "severity": 0.35,
+    "public_impact": 0.25,
+    "safety_risk": 0.20,
+    "confidence": 0.10,
+    "freshness": 0.10
+  },
+  "freshness_decay_days": 30
+}
